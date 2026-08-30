@@ -1,6 +1,9 @@
 name: Build RetroFold APK
 on:
   workflow_dispatch:
+  push:
+    branches: [ retrofold-build ]
+    paths: [ 'RetroFold/**', '.github/workflows/retrofold-build.yml' ]
 jobs:
   build:
     runs-on: ubuntu-latest
