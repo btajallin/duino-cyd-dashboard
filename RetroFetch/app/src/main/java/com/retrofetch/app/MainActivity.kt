@@ -47,7 +47,7 @@ class MainActivity : Activity() {
     private lateinit var forwardButton: Button
 
     private val romRoot: File
-        get() = File(Environment.getExternalStorageDirectory(), "RetroFold/roms")
+        get() = File(Environment.getExternalStorageDirectory(), "ROMs")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,7 +67,7 @@ class MainActivity : Activity() {
         super.onResume()
         if (hasStorageAccess()) {
             ensureRomFolders()
-            status("Ready — downloads go straight to RetroFold")
+            status("Ready — downloads go straight to /ROMs")
         }
     }
 
@@ -192,7 +192,7 @@ class MainActivity : Activity() {
     private fun requestStorageAccess() {
         AlertDialog.Builder(this)
             .setTitle("Allow ROM folder access")
-            .setMessage("RetroFetch needs All files access so a downloaded ROM can be placed directly into RetroFold/roms/nes or RetroFold/roms/megadrive.")
+            .setMessage("RetroFetch needs All files access so a downloaded ROM can be placed directly into /ROMs/nes or /ROMs/megadrive.")
             .setPositiveButton("OPEN SETTINGS") { _, _ ->
                 val appIntent = Intent(
                     Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
@@ -456,7 +456,7 @@ class MainActivity : Activity() {
     }
 
     private fun reportSaved(file: File, system: RomSystem) {
-        val message = "${file.name} → RetroFold/roms/${system.folder}/"
+        val message = "${file.name} → /ROMs/${system.folder}/"
         statusFromWorker(message)
         runOnUiThread { toast(message) }
     }
@@ -470,10 +470,10 @@ class MainActivity : Activity() {
         val nesFiles = File(romRoot, RomSystem.NES.folder).listFiles()?.count { it.isFile } ?: 0
         val genesisFiles = File(romRoot, RomSystem.GENESIS.folder).listFiles()?.count { it.isFile } ?: 0
         AlertDialog.Builder(this)
-            .setTitle("RetroFold ROM library")
+            .setTitle("ROM library")
             .setMessage(
                 "NES: $nesFiles ROMs\nGenesis / Mega Drive: $genesisFiles ROMs\n\n" +
-                    "Folder: /storage/emulated/0/RetroFold/roms/"
+                    "Folder: /storage/emulated/0/ROMs/"
             )
             .setPositiveButton("OK", null)
             .show()
