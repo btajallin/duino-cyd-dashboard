@@ -5,12 +5,13 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.webkit.CookieManager
 import android.webkit.URLUtil
@@ -23,6 +24,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.window.OnBackInvokedDispatcher
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -53,6 +55,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         buildUi()
         configureWebView()
+        registerModernBackGesture()
 
         if (!hasStorageAccess()) {
             requestStorageAccess()
@@ -75,26 +78,22 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(18, 18, 18))
+
+            // Android 15/16 draws apps edge-to-edge by default. Respect the real
+            // status/navigation bar insets so controls are never hidden underneath them.
+            setOnApplyWindowInsetsListener { view, insets ->
+                val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                insets
+            }
         }
 
-        val toolbar = LinearLayout(this).apply {
+        // Row 1: address bar gets the full available width.
+        val addressRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(6, 6, 6, 6)
+            setPadding(8, 6, 8, 2)
         }
-
-        fun navButton(text: String, action: () -> Unit) = Button(this).apply {
-            this.text = text
-            minWidth = 0
-            minimumWidth = 0
-            setPadding(14, 0, 14, 0)
-            setOnClickListener { action() }
-        }
-
-        backButton = navButton("◀") { if (webView.canGoBack()) webView.goBack() }
-        forwardButton = navButton("▶") { if (webView.canGoForward()) webView.goForward() }
-        val refreshButton = navButton("↻") { webView.reload() }
-        val romsButton = navButton("ROMs") { showRomSummary() }
 
         addressBar = EditText(this).apply {
             setSingleLine(true)
@@ -110,29 +109,62 @@ class MainActivity : Activity() {
             }
         }
 
-        val goButton = navButton("GO") { navigate(addressBar.text.toString()) }
+        val goButton = browserButton("GO") { navigate(addressBar.text.toString()) }
+        addressRow.addView(
+            addressBar,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        addressRow.addView(goButton)
 
-        toolbar.addView(backButton)
-        toolbar.addView(forwardButton)
-        toolbar.addView(refreshButton)
-        toolbar.addView(addressBar, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        toolbar.addView(goButton)
-        toolbar.addView(romsButton)
+        // Row 2: permanent navigation controls.
+        val navRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(8, 0, 8, 4)
+        }
+
+        backButton = browserButton("◀ Back") { goBackOrStay() }
+        forwardButton = browserButton("Forward ▶") {
+            if (webView.canGoForward()) webView.goForward()
+        }
+        val refreshButton = browserButton("↻") { webView.reload() }
+        val homeButton = browserButton("Home") { webView.loadUrl("https://www.google.com/") }
+        val romsButton = browserButton("ROMs") { showRomSummary() }
+
+        val buttonParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        navRow.addView(backButton, buttonParams)
+        navRow.addView(forwardButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        navRow.addView(refreshButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.55f))
+        navRow.addView(homeButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f))
+        navRow.addView(romsButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f))
 
         webView = WebView(this)
 
         statusText = TextView(this).apply {
-            text = "RetroFetch v0.1"
+            text = "RetroFetch v0.2"
             setTextColor(Color.LTGRAY)
             setBackgroundColor(Color.rgb(28, 28, 28))
             textSize = 12f
             setPadding(14, 8, 14, 8)
         }
 
-        root.addView(toolbar)
-        root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(addressRow)
+        root.addView(navRow)
+        root.addView(
+            webView,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        )
         root.addView(statusText)
         setContentView(root)
+    }
+
+    private fun browserButton(label: String, action: () -> Unit) = Button(this).apply {
+        text = label
+        minWidth = 0
+        minimumWidth = 0
+        setPadding(8, 0, 8, 0)
+        textSize = 12f
+        setOnClickListener { action() }
     }
 
     private fun configureWebView() {
@@ -152,6 +184,12 @@ class MainActivity : Activity() {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
 
         webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                if (!url.isNullOrBlank()) addressBar.setText(url)
+                updateNavigationButtons()
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 if (!url.isNullOrBlank()) addressBar.setText(url)
@@ -169,10 +207,34 @@ class MainActivity : Activity() {
 
         webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             if (url.startsWith("blob:", ignoreCase = true)) {
-                toast("This site uses a browser-generated download link that RetroFetch v0.1 cannot capture yet.")
+                toast("This site uses a browser-generated download link that RetroFetch cannot capture yet.")
                 return@setDownloadListener
             }
             startRomDownload(url, userAgent, contentDisposition, mimeType)
+        }
+    }
+
+    private fun registerModernBackGesture() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT
+            ) {
+                goBackOrExit()
+            }
+        }
+    }
+
+    private fun goBackOrStay() {
+        if (webView.canGoBack()) {
+            webView.goBack()
+        }
+    }
+
+    private fun goBackOrExit() {
+        if (webView.canGoBack()) {
+            webView.goBack()
+        } else {
+            finish()
         }
     }
 
@@ -496,7 +558,7 @@ class MainActivity : Activity() {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
-    @Deprecated("Deprecated in Android framework, retained for WebView navigation")
+    @Deprecated("Used for Android 12 and older")
     override fun onBackPressed() {
         if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
     }
