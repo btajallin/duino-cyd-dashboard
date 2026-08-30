@@ -15,7 +15,7 @@ data class Game(val name:String,val file:File,val system:SystemDef)
 data class PadState(val name:String="No controller input yet",val button:String="—",val lx:Float=0f,val ly:Float=0f,val rx:Float=0f,val ry:Float=0f,val lt:Float=0f,val rt:Float=0f,val hx:Float=0f,val hy:Float=0f)
 
 object Roms {
-    val root:File get()=File(Environment.getExternalStorageDirectory(),"RetroFold/roms")
+    val root:File get()=File(Environment.getExternalStorageDirectory(),"ROMs")
     fun scan():Map<SystemDef,List<Game>> {
         root.mkdirs()
         return SystemDef.entries.associateWith { s ->
